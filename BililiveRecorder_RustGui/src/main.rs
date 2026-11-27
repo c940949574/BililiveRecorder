@@ -9,6 +9,7 @@ use launcher::Launcher;
 use serde::{Deserialize, Serialize};
 use series::{Sample, Series};
 use std::collections::HashMap;
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -62,6 +63,8 @@ struct App {
     rooms: Vec<Room>,
     series: HashMap<String, Series>,
     last_poll: Instant,
+    /// 最近一次拉取房间列表失败的原因；成功后清空
+    poll_error: Option<String>,
     status: String,
     add_room_input: String,
     show_settings: bool,
@@ -81,7 +84,7 @@ impl App {
         let work_dir_str = cfg.work_dir.clone();
         Self {
             cfg, client, launcher, exe_dir, work_dir_str,
-            rooms: Vec::new(), series: HashMap::new(),
+            rooms: Vec::new(), series: HashMap::new(), poll_error: None,
             last_poll: Instant::now() - Duration::from_secs(10),
             status: String::new(), add_room_input: String::new(),
             show_settings: false, show_logs: false, logs: Vec::new(),
@@ -95,6 +98,19 @@ impl App {
     fn settings_file(&self) -> PathBuf { self.data_dir().join("gui-settings.json") }
     fn core_config_file(&self) -> PathBuf { self.data_dir().join("config.json") }
     fn cli_log_file(&self) -> PathBuf { self.data_dir().join("cli.log") }
+    fn gui_log_file(&self) -> PathBuf { self.data_dir().join("gui.log") }
+
+    /// 把 GUI 自身的错误追加到 data/gui.log（写不进去也不影响运行）
+    fn gui_log(&self, msg: &str) {
+        use std::io::Write;
+        let file = self.gui_log_file();
+        let res = std::fs::create_dir_all(self.data_dir())
+            .and_then(|_| OpenOptions::new().create(true).append(true).open(&file))
+            .and_then(|mut f| writeln!(f, "[{}] {msg}", launcher::now_string()));
+        if let Err(e) = res {
+            eprintln!("写 {} 失败：{e}", file.display());
+        }
+    }
 
     /// 录制文件保存目录（相对路径按程序目录解析）
     fn work_dir(&self) -> PathBuf {
@@ -158,6 +174,7 @@ impl App {
     fn poll(&mut self) {
         match self.client.get_rooms() {
             Ok(rooms) => {
+                if self.poll_error.is_some() { self.poll_error = None; }
                 self.rooms = rooms;
                 for r in &self.rooms {
                     let s = self.series.entry(r.key()).or_insert_with(|| Series::new(self.cfg.max_points));
@@ -176,8 +193,13 @@ impl App {
                     if !self.rooms.iter().any(|r| r.key() == k) { self.series.remove(&k); }
                 }
             }
-            Err(_) => {
+            Err(e) => {
                 self.rooms.clear();
+                // 同一个错误只记一次，避免日志刷屏
+                if self.poll_error.as_deref() != Some(e.as_str()) {
+                    self.gui_log(&format!("拉取房间列表失败：{e}"));
+                }
+                self.poll_error = Some(e);
             }
         }
         if self.show_logs {
@@ -338,6 +360,11 @@ fn weak_text(s: &str) -> egui::RichText {
     egui::RichText::new(s.to_string()).weak()
 }
 
+/// 有限数值保留 n 位小数；NaN / Infinity 显示为 "—"
+fn fmt_finite(x: f64, digits: usize) -> String {
+    if x.is_finite() { format!("{x:.digits$}") } else { "—".to_string() }
+}
+
 impl App {
     fn render_empty_hint(&mut self, ui: &mut egui::Ui) {
         use launcher::CoreState;
@@ -361,7 +388,12 @@ impl App {
                 )).monospace().small());
             }
             _ => {
-                ui.label("还没有房间，在上方输入房间号后点「添加」。");
+                if let Some(e) = &self.poll_error {
+                    ui.colored_label(COLOR_BAD, format!("拉取房间列表失败：{e}"));
+                    ui.label(weak_text(&format!("详见 {}", self.gui_log_file().display())));
+                } else {
+                    ui.label("还没有房间，在上方输入房间号后点「添加」。");
+                }
             }
         }
         if can_retry {
@@ -442,7 +474,7 @@ impl App {
                         ui.label(format!("均值 {:.2} / 峰值 {:.2} / 谷值 {:.2}", avg, max, min));
                         ui.colored_label(COLOR_SHORT, format!("MA{short} {ma_s:.2}"));
                         ui.colored_label(COLOR_LONG, format!("MA{long} {ma_l:.2}"));
-                        ui.label(format!("写入 {:.2} MB/s · 速度比 {:.2}", room.io_stats.disk_mbps, room.recording_stats.duration_ratio));
+                        ui.label(format!("写入 {:.2} MB/s · 速度比 {}", room.io_stats.disk_mbps, fmt_finite(room.recording_stats.duration_ratio, 2)));
                         ui.label(format!("总写入 {:.1} MB", room.recording_stats.total_output_bytes as f64 / 1048576.0));
                     });
                 }
@@ -566,17 +598,25 @@ fn install_chinese_font(ctx: &egui::Context) {
 }
 
 fn main() -> eframe::Result<()> {
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1100.0, 720.0])
-            .with_title("录播姬 Rust GUI"),
-        ..Default::default()
-    };
+    if std::env::args().any(|a| a == "-h" || a == "--help") {
+        println!("录播姬 Rust GUI");
+        println!("  --minimized   启动后最小化到任务栏（录制核心照常在后台运行）");
+        println!("环境变量：BLR_CLI_PATH 指定录制核心 CLI 的路径（默认在程序同目录的 cli 文件夹里找）");
+        return Ok(());
+    }
+    let minimized = std::env::args().any(|a| a == "--minimized");
+    let viewport = egui::ViewportBuilder::default()
+        .with_inner_size([1100.0, 720.0])
+        .with_title("录播姬 Rust GUI");
+    let options = eframe::NativeOptions { viewport, ..Default::default() };
     eframe::run_native(
         "录播姬 Rust GUI",
         options,
         Box::new(|cc| {
             install_chinese_font(&cc.egui_ctx);
+            if minimized {
+                cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+            }
             Ok(Box::new(App::new()))
         }),
     )

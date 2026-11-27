@@ -20,7 +20,11 @@ impl Series {
         Self { data: VecDeque::with_capacity(capacity), capacity, sum_mbps: 0.0, sum_disk: 0.0 }
     }
 
-    pub fn push(&mut self, s: Sample) {
+    /// 加入一个采样点。非有限值（NaN / Infinity）按 0 处理，免得折线图坐标出错。
+    pub fn push(&mut self, mut s: Sample) {
+        if !s.mbps.is_finite() { s.mbps = 0.0; }
+        if !s.disk_mbps.is_finite() { s.disk_mbps = 0.0; }
+        if !s.time.is_finite() { s.time = 0.0; }
         if self.data.len() >= self.capacity {
             if let Some(old) = self.data.pop_front() {
                 self.sum_mbps -= old.mbps;

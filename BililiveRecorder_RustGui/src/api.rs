@@ -1,5 +1,27 @@
 use base64::Engine;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// 录播核心用 Newtonsoft 序列化，数值为 NaN / Infinity 时会输出成字符串 "NaN" / "Infinity"。
+/// 这里两种形式都接受，避免整个房间列表因为一个字段解析失败而拉不到。
+fn de_f64<'de, D: Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Value {
+        Number(f64),
+        Text(String),
+        Null,
+    }
+    Ok(match Value::deserialize(d)? {
+        Value::Number(x) => x,
+        Value::Null => 0.0,
+        Value::Text(s) => match s.trim() {
+            "NaN" => f64::NAN,
+            "Infinity" => f64::INFINITY,
+            "-Infinity" => f64::NEG_INFINITY,
+            other => other.parse().unwrap_or(0.0),
+        },
+    })
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 #[serde(rename_all = "camelCase", default)]
@@ -7,25 +29,33 @@ pub struct IoStats {
     pub stream_host: Option<String>,
     pub start_time: Option<String>,
     pub end_time: Option<String>,
+    #[serde(deserialize_with = "de_f64")]
     pub duration: f64,
     pub network_bytes_downloaded: i64,
+    #[serde(deserialize_with = "de_f64")]
     pub network_mbps: f64,
+    #[serde(deserialize_with = "de_f64")]
     pub disk_write_duration: f64,
     pub disk_bytes_written: i64,
+    #[serde(deserialize_with = "de_f64")]
     pub disk_mbps: f64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct RecordingStats {
+    #[serde(deserialize_with = "de_f64")]
     pub session_duration: f64,
     pub total_input_bytes: i64,
     pub total_output_bytes: i64,
     pub current_file_size: i64,
     pub session_max_timestamp: i64,
     pub file_max_timestamp: i64,
+    #[serde(deserialize_with = "de_f64")]
     pub added_duration: f64,
+    #[serde(deserialize_with = "de_f64")]
     pub passed_time: f64,
+    #[serde(deserialize_with = "de_f64")]
     pub duration_ratio: f64,
     pub input_video_bytes: i64,
     pub input_audio_bytes: i64,

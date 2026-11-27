@@ -239,8 +239,8 @@ impl Drop for Launcher {
     fn drop(&mut self) { self.shutdown(); }
 }
 
-/// 当前 UTC 时刻 HH:MM:SS，只用于在 cli.log 里分隔每次启动
-fn now_string() -> String {
+/// 当前 UTC 时刻 HH:MM:SS，用于在日志里标注时间
+pub fn now_string() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
