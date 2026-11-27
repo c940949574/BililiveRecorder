@@ -34,6 +34,8 @@ struct Config {
     ma_short: usize,
     ma_long: usize,
     auto_launch: bool,
+    /// 播放器程序路径（ffplay/mpv/PotPlayer 等）；空 = 系统默认关联程序
+    player_path: String,
     /// 录制文件保存目录；空 = 程序同目录下的「录播文件」
     work_dir: String,
 }
@@ -49,6 +51,7 @@ impl Default for Config {
             ma_short: 3,
             ma_long: 10,
             auto_launch: true,
+            player_path: String::new(),
             work_dir: String::new(),
         }
     }
@@ -265,13 +268,31 @@ impl App {
         match self.find_recording_file(room) {
             Some(path) => {
                 let shown = path.display().to_string();
-                match launcher::open_with_default(&path) {
-                    Ok(()) => self.status = format!("正在用系统播放器打开：{}", shown),
+                let title = format!("{} · 正在录制", room.display_name());
+                let choice = self.resolve_player();
+                match launcher::launch_player(&choice, &path, &title) {
+                    Ok(()) => self.status = format!("正在播放：{shown}"),
                     Err(e) => self.status = e,
                 }
             }
             None => self.status = format!("保存目录里没有房间 {} 的录制文件：{}", room.room_id, self.work_dir().display()),
         }
+    }
+
+    /// 播放器解析顺序：设置里填的路径 → 程序同目录的 ffplay.exe → 系统默认关联
+    fn resolve_player(&self) -> launcher::PlayerChoice {
+        let p = self.cfg.player_path.trim_matches('"').trim();
+        if !p.is_empty() {
+            let path = PathBuf::from(p);
+            if path.is_file() {
+                return launcher::PlayerChoice::for_path(path);
+            }
+        }
+        let local = self.exe_dir.join("ffplay.exe");
+        if local.is_file() {
+            return launcher::PlayerChoice::Ffplay(local);
+        }
+        launcher::PlayerChoice::System
     }
 }
 
@@ -536,6 +557,11 @@ impl App {
                     ui.label("长期均线");
                     ui.add(egui::DragValue::new(&mut self.cfg.ma_long).range(3..=60));
                 });
+
+                ui.separator();
+                ui.label("播放");
+                ui.label("播放器程序路径（ffplay/mpv/PotPlayer 等，留空用系统默认；ffplay 可直接看正在写的文件）");
+                ui.text_edit_singleline(&mut self.cfg.player_path);
 
                 ui.separator();
                 if ui.button("保存并重连").clicked() {

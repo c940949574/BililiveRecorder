@@ -302,6 +302,46 @@ fn search(dir: &Path, name: &str, depth: u32) -> Option<PathBuf> {
     dirs.iter().find_map(|d| search(d, name, depth - 1))
 }
 
+/// 播放器的选择结果
+pub enum PlayerChoice {
+    /// ffplay：用 FFmpeg 自带的简易播放器，支持跟随正在写入的文件
+    Ffplay(PathBuf),
+    /// 其它播放器程序（mpv / PotPlayer 等）：直接把文件路径作为第一个参数
+    Generic(PathBuf),
+    /// 没有指定播放器：交给系统默认关联程序
+    System,
+}
+
+impl PlayerChoice {
+    /// 根据程序路径判断类型：文件名以 ffplay 开头的按 ffplay 处理
+    pub fn for_path(p: PathBuf) -> Self {
+        let is_ffplay = p.file_stem().map(|s| s.to_string_lossy().to_lowercase().starts_with("ffplay")).unwrap_or(false);
+        if is_ffplay { PlayerChoice::Ffplay(p) } else { PlayerChoice::Generic(p) }
+    }
+}
+
+/// 启动外部播放器播放文件。非阻塞：不等播放器退出。
+pub fn launch_player(choice: &PlayerChoice, file: &Path, title: &str) -> Result<(), String> {
+    let (exe, args): (&Path, Vec<String>) = match choice {
+        PlayerChoice::System => return open_with_default(file),
+        PlayerChoice::Ffplay(exe) => (exe, vec![
+            "-autoexit".into(),
+            "-loglevel".into(), "error".into(),
+            "-window_title".into(), title.into(),
+            file.display().to_string(),
+        ]),
+        PlayerChoice::Generic(exe) => (exe, vec![file.display().to_string()]),
+    };
+    let mut cmd = Command::new(exe);
+    cmd.args(&args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd.spawn().map(|_| ()).map_err(|e| format!("启动播放器 {} 失败：{e}", exe.display()))
+}
+
 /// 用系统默认程序打开文件或文件夹
 pub fn open_with_default(path: &Path) -> Result<(), String> {
     if !path.exists() {
