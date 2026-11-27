@@ -112,9 +112,7 @@ impl App {
     }
 
     fn ma_last(&self, s: &Series, n: usize) -> f64 {
-        if s.len() < n { return 0.0; }
-        let vals: Vec<f64> = s.samples().rev().take(n).map(|x| x.mbps).collect();
-        vals.iter().sum::<f64>() / n as f64
+        s.last_n_avg(n)
     }
 }
 
@@ -215,26 +213,26 @@ impl App {
 
             if room.recording {
                 let s = self.series.get(&key).cloned().unwrap_or_else(|| Series::new(self.cfg.max_points));
-                let (response, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 48.0), egui::Sense::hover());
-                let rect = response.rect;
-                let plot = Plot::new(format!("spark_{}", key))
+                let plot_id = egui::Id::new(format!("spark_{}", key));
+                let plot = Plot::new(plot_id)
                     .height(48.0)
                     .show_axes(false)
                     .show_grid(false)
+                    .show_label(false)
                     .allow_zoom(false)
                     .allow_drag(false)
                     .allow_scroll(false);
-                plot.show(ui, |plot_ui| {
-                    plot_ui.line(Line::new(s.points()).color(egui::Color32::from_rgb(226, 75, 74)).width(2.0).name("码率"));
+                let response = plot.show(ui, |plot_ui| {
+                    plot_ui.line(Line::new("码率", s.points()).color(egui::Color32::from_rgb(226, 75, 74)).width(2.0));
                     if s.len() >= self.cfg.ma_long {
-                        plot_ui.line(Line::new(s.ma(self.cfg.ma_short)).color(egui::Color32::from_rgb(239, 159, 39)).width(1.5).name(format!("MA{}", self.cfg.ma_short)));
-                        plot_ui.line(Line::new(s.ma(self.cfg.ma_long)).color(egui::Color32::from_rgb(85, 183, 235)).width(1.5).name(format!("MA{}", self.cfg.ma_long)));
+                        plot_ui.line(Line::new(format!("MA{}", self.cfg.ma_short), s.ma(self.cfg.ma_short)).color(egui::Color32::from_rgb(239, 159, 39)).width(1.5));
+                        plot_ui.line(Line::new(format!("MA{}", self.cfg.ma_long), s.ma(self.cfg.ma_long)).color(egui::Color32::from_rgb(85, 183, 235)).width(1.5));
                     }
-                });
-                let hover_pos = response.hover_pos();
-                if let Some(pos) = hover_pos {
+                }).response;
+                if response.hovered() {
                     let (avg, max, min) = s.stats();
-                    egui::show_tooltip_at(ui.ctx(), response.id.with("tip"), rect.min, |ui| {
+                    let tip_pos = response.hover_pos().unwrap_or(response.rect.center());
+                    egui::show_tooltip_at(ui.ctx(), plot_id.with("tip"), tip_pos, |ui| {
                         ui.label(egui::RichText::new("码率详情").strong());
                         ui.label(format!("当前 {:.2} Mbps", room.io_stats.network_mbps));
                         ui.label(format!("均值 {:.2} / 峰值 {:.2} / 谷值 {:.2}", avg, max, min));
@@ -242,7 +240,6 @@ impl App {
                         ui.label(format!("写入 {:.2} MB/s · 速度比 {:.2}", room.io_stats.disk_mbps, room.recording_stats.duration_ratio));
                         ui.label(format!("总写入 {:.1} MB", room.recording_stats.total_output_bytes as f64 / 1048576.0));
                     });
-                    let _ = pos;
                 }
             }
         });
