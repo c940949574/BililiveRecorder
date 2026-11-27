@@ -91,6 +91,11 @@
                                 <ui:PathIcon Style="{StaticResource PathIconDataOpenInNew}"/>
                             </MenuItem.Icon>
                         </MenuItem>
+                        <MenuItem Header="播放录制文件" Click="MenuItem_PlayRecording_Click" ToolTip="用系统默认播放器打开当前正在录制的视频文件">
+                            <MenuItem.Icon>
+                                <ui:PathIcon Style="{StaticResource PathIconDataPlayCircleOutline}"/>
+                            </MenuItem.Icon>
+                        </MenuItem>
                         <Separator/>
                         <MenuItem Header="{l:Loc RoomCard_Menu_Settings}" Click="MenuItem_ShowSettings_Click">
                             <MenuItem.Icon>
