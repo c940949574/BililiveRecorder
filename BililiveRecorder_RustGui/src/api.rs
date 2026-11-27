@@ -105,14 +105,20 @@ pub struct ApiClient {
     client: reqwest::blocking::Client,
 }
 
+/// 生成 Basic Auth 请求头；用户名或密码为空则不使用认证
+pub fn build_auth_header(username: &str, password: &str) -> Option<String> {
+    if username.is_empty() || password.is_empty() {
+        return None;
+    }
+    let raw = format!("{}:{}", username, password);
+    let encoded = base64::engine::general_purpose::STANDARD.encode(raw.as_bytes());
+    Some(format!("Basic {}", encoded))
+}
+
 impl ApiClient {
     pub fn new(base: String, username: Option<String>, password: Option<String>) -> Self {
         let auth_header = match (username, password) {
-            (Some(u), Some(p)) => {
-                let raw = format!("{}:{}", u, p);
-                let encoded = base64::engine::general_purpose::STANDARD.encode(raw.as_bytes());
-                Some(format!("Basic {}", encoded))
-            }
+            (Some(u), Some(p)) => build_auth_header(&u, &p),
             _ => None,
         };
         let client = reqwest::blocking::Client::builder()
