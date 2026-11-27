@@ -1,8 +1,10 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using BililiveRecorder.Core;
+using BililiveRecorder.Core.Event;
 using BililiveRecorder.WPF.Pages;
 
 #nullable enable
@@ -13,9 +15,74 @@ namespace BililiveRecorder.WPF.Controls
     /// </summary>
     public partial class RoomCard : UserControl
     {
+        private string? currentRecordingFilePath;
+        private IRoom? subscribedRoom;
+
         public RoomCard()
         {
             this.InitializeComponent();
+            this.DataContextChanged += this.RoomCard_DataContextChanged;
+            this.Unloaded += this.RoomCard_Unloaded;
+        }
+
+        private void RoomCard_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            if (this.subscribedRoom is IRoom oldRoom)
+            {
+                oldRoom.RecordFileOpening -= this.Room_RecordFileOpening;
+                oldRoom.RecordFileClosed -= this.Room_RecordFileClosed;
+                oldRoom.RecordSessionEnded -= this.Room_RecordSessionEnded;
+            }
+
+            this.currentRecordingFilePath = null;
+            this.subscribedRoom = e.NewValue as IRoom;
+
+            if (this.subscribedRoom is IRoom newRoom)
+            {
+                newRoom.RecordFileOpening += this.Room_RecordFileOpening;
+                newRoom.RecordFileClosed += this.Room_RecordFileClosed;
+                newRoom.RecordSessionEnded += this.Room_RecordSessionEnded;
+            }
+        }
+
+        private void RoomCard_Unloaded(object sender, RoutedEventArgs e)
+        {
+            if (this.subscribedRoom is IRoom room)
+            {
+                room.RecordFileOpening -= this.Room_RecordFileOpening;
+                room.RecordFileClosed -= this.Room_RecordFileClosed;
+                room.RecordSessionEnded -= this.Room_RecordSessionEnded;
+                this.subscribedRoom = null;
+            }
+        }
+
+        private void Room_RecordFileOpening(object? sender, RecordFileOpeningEventArgs e) => this.currentRecordingFilePath = e.FullPath;
+
+        private void Room_RecordFileClosed(object? sender, RecordFileClosedEventArgs e)
+        {
+            if (this.currentRecordingFilePath is string path && string.Equals(path, e.FullPath, StringComparison.OrdinalIgnoreCase))
+                this.currentRecordingFilePath = null;
+        }
+
+        private void Room_RecordSessionEnded(object? sender, RecordSessionEndedEventArgs e) => this.currentRecordingFilePath = null;
+
+        private void MenuItem_PlayRecording_Click(object sender, RoutedEventArgs e)
+        {
+            var path = this.currentRecordingFilePath;
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                MessageBox.Show("当前没有录制中的视频文件。", "播放录制文件", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            try
+            {
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("无法打开播放器：" + ex.Message, "播放录制文件", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         public event EventHandler? DeleteRequested;
