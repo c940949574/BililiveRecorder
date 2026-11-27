@@ -1,0 +1,55 @@
+name: Build Rust GUI
+
+on:
+  push:
+    branches: ["rust-gui"]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    working-directory: BililiveRecorder_RustGui
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            BililiveRecorder_RustGui/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('BililiveRecorder_RustGui/Cargo.lock') }}
+      - name: Build release
+        run: cargo build --release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-gui-windows-x64
+          path: BililiveRecorder_RustGui/target/release/bililiverecorder-rustgui.exe
+          if-no-files-found: error
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev
+      - name: Build release
+        run: cargo build --release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-gui-linux
+          path: BililiveRecorder_RustGui/target/release/bililiverecorder-rustgui
+          if-no-files-found: error
