@@ -88,7 +88,7 @@ impl App {
                     if !self.rooms.iter().any(|r| r.key() == k) { self.series.remove(&k); }
                 }
             }
-            Err(e) => self.status = format!("连接失败: {}", e),
+            Err(_) => self.status = format!("未连接到 {} — 请先启动录播姬 CLI 并开启 HTTP 服务", self.cfg.base_url),
         }
         if self.show_logs {
             if let Ok(logs) = self.client.fetch_logs() { self.logs = logs; }
@@ -284,6 +284,27 @@ impl App {
     }
 }
 
+fn install_chinese_font(ctx: &egui::Context) {
+    let candidates = [
+        r"C:\Users\94094\AppData\Roaming\kingsoft\office6\docerFonts\MiSans Bold.ttf",
+        r"C:\Windows\Fonts\msyh.ttc",
+        r"C:\Users\94094\AppData\Local\Microsoft\Windows\Fonts\MiSans VF.ttf",
+    ];
+    for path in candidates {
+        if let Ok(bytes) = std::fs::read(path) {
+            let mut fonts = egui::FontDefinitions::default();
+            fonts.font_data.insert(
+                "chinese".to_owned(),
+                egui::FontData::from_owned(bytes).into(),
+            );
+            fonts.families.entry(egui::FontFamily::Proportional).or_default().insert(0, "chinese".to_owned());
+            fonts.families.entry(egui::FontFamily::Monospace).or_default().insert(0, "chinese".to_owned());
+            ctx.set_fonts(fonts);
+            return;
+        }
+    }
+}
+
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -291,5 +312,12 @@ fn main() -> eframe::Result<()> {
             .with_title("录播姬 Rust GUI"),
         ..Default::default()
     };
-    eframe::run_native("录播姬 Rust GUI", options, Box::new(|_| Ok(Box::new(App::new()))))
+    eframe::run_native(
+        "录播姬 Rust GUI",
+        options,
+        Box::new(|cc| {
+            install_chinese_font(&cc.egui_ctx);
+            Ok(Box::new(App::new()))
+        }),
+    )
 }
