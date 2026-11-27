@@ -425,10 +425,10 @@ impl App {
                     .allow_drag(false)
                     .allow_scroll(false);
                 let response = plot.show(ui, |plot_ui| {
-                    plot_ui.line(Line::new("码率", s.points()).color(COLOR_UP).width(2.0));
+                    plot_ui.line(Line::new("码率", s.points()).color(COLOR_UP).width(2.0_f32));
                     if s.len() >= self.cfg.ma_long {
-                        plot_ui.line(Line::new(format!("MA{}", self.cfg.ma_short), s.ma(self.cfg.ma_short)).color(COLOR_SHORT).width(1.5));
-                        plot_ui.line(Line::new(format!("MA{}", self.cfg.ma_long), s.ma(self.cfg.ma_long)).color(COLOR_LONG).width(1.5));
+                        plot_ui.line(Line::new(format!("MA{}", self.cfg.ma_short), s.ma(self.cfg.ma_short)).color(COLOR_SHORT).width(1.5_f32));
+                        plot_ui.line(Line::new(format!("MA{}", self.cfg.ma_long), s.ma(self.cfg.ma_long)).color(COLOR_LONG).width(1.5_f32));
                     }
                 }).response;
                 if response.hovered() {

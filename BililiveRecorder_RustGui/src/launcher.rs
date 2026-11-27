@@ -105,10 +105,10 @@ impl Launcher {
         for d in [config_file.parent().unwrap_or(Path::new(".")), work_dir] {
             fs::create_dir_all(d).map_err(|e| format!("无法创建目录 {}：{e}", d.display()))?;
         }
-        let log = OpenOptions::new().create(true).append(true).open(log_file)
+        let mut log = OpenOptions::new().create(true).append(true).open(log_file)
             .map_err(|e| format!("无法创建日志 {}：{e}", log_file.display()))?;
         let err = log.try_clone().map_err(|e| e.to_string())?;
-        writeln!(log, "\n===== {} 启动录制核心 =====", crate::now_string())?;
+        let _ = writeln!(log, "\n===== {} 启动录制核心 =====", now_string());
 
         // 目标端口被别的程序占用时换一个空闲端口
         let port = if port_in_use(bind_port) { free_port() } else { bind_port };
@@ -237,6 +237,15 @@ impl Launcher {
 
 impl Drop for Launcher {
     fn drop(&mut self) { self.shutdown(); }
+}
+
+/// 当前 UTC 时刻 HH:MM:SS，只用于在 cli.log 里分隔每次启动
+fn now_string() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format!("{:02}:{:02}:{:02} UTC", (secs / 3600) % 24, (secs / 60) % 60, secs % 60)
 }
 
 fn api_healthy(url: &str, auth_header: &Option<String>) -> bool {
