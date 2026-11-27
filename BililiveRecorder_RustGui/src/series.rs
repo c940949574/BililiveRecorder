@@ -7,6 +7,7 @@ pub struct Sample {
     pub disk_mbps: f64,
 }
 
+#[derive(Clone)]
 pub struct Series {
     data: VecDeque<Sample>,
     capacity: usize,
@@ -65,6 +66,13 @@ impl Series {
 
     pub fn last(&self) -> Option<&Sample> { self.data.back() }
     pub fn samples(&self) -> impl Iterator<Item = &Sample> { self.data.iter() }
+
+    pub fn last_n_avg(&self, n: usize) -> f64 {
+        if self.data.len() < n || n == 0 { return 0.0; }
+        let start = self.data.len() - n;
+        let sum: f64 = self.data.iter().skip(start).map(|s| s.mbps).sum();
+        sum / n as f64
+    }
 
     pub fn stats(&self) -> (f64, f64, f64) {
         if self.data.is_empty() { return (0.0, 0.0, 0.0); }
