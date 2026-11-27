@@ -231,7 +231,7 @@ impl App {
                 if response.hovered() {
                     let (avg, max, min) = s.stats();
                     let tip_pos = response.hover_pos().unwrap_or(response.rect.center());
-                    egui::show_tooltip_at(ui.ctx(), plot_id.with("tip"), ui.layer_id(), tip_pos, |ui| {
+                    egui::show_tooltip_at(ui.ctx(), ui.layer_id(), plot_id.with("tip"), tip_pos, |ui| {
                         ui.label(egui::RichText::new("码率详情").strong());
                         ui.label(format!("当前 {:.2} Mbps", room.io_stats.network_mbps));
                         ui.label(format!("均值 {:.2} / 峰值 {:.2} / 谷值 {:.2}", avg, max, min));
