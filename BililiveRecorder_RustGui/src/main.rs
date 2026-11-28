@@ -34,6 +34,8 @@ struct Theme {
     area: egui::Color32,
     /// 状态胶囊底色
     pill: egui::Color32,
+    /// 卡片阴影
+    card_shadow: egui::Shadow,
 }
 
 impl Theme {
@@ -57,6 +59,12 @@ impl Theme {
                 bad: egui::Color32::from_rgb(226, 75, 74),
                 area: egui::Color32::from_rgba_unmultiplied(226, 75, 74, 36),
                 pill: egui::Color32::from_rgba_unmultiplied(255, 255, 255, 10),
+                card_shadow: egui::Shadow {
+                    offset: [0, 2],
+                    blur: 14,
+                    spread: 0,
+                    color: egui::Color32::from_rgba_unmultiplied(0, 0, 0, 110),
+                },
             }
         } else {
             Self {
@@ -77,6 +85,12 @@ impl Theme {
                 bad: egui::Color32::from_rgb(0xA3, 0x2D, 0x2D),
                 area: egui::Color32::from_rgba_unmultiplied(163, 45, 45, 30),
                 pill: egui::Color32::from_rgba_unmultiplied(0, 0, 0, 10),
+                card_shadow: egui::Shadow {
+                    offset: [0, 1],
+                    blur: 12,
+                    spread: 0,
+                    color: egui::Color32::from_rgba_unmultiplied(0, 0, 0, 30),
+                },
             }
         }
     }
@@ -559,7 +573,8 @@ impl App {
             .fill(self.th.card)
             .stroke(egui::Stroke::new(0.5, self.th.line))
             .corner_radius(10.0)
-            .inner_margin(egui::Margin::symmetric(14, 10));
+            .inner_margin(egui::Margin::symmetric(14, 10))
+            .shadow(self.th.card_shadow);
 
         card.show(ui, |ui| {
             // 标题行：名字 + 状态胶囊 + 播放 + 更多菜单
