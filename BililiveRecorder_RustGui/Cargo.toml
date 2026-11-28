@@ -16,3 +16,6 @@ base64 = "0.22"
 opt-level = "s"
 lto = true
 strip = true
+
+[target."cfg(windows)".dependencies]
+winreg = "0.52"

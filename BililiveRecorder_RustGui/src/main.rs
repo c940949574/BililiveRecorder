@@ -13,20 +13,93 @@ use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-const COLOR_UP: egui::Color32 = egui::Color32::from_rgb(226, 75, 74);
-const COLOR_UP_SOFT: egui::Color32 = egui::Color32::from_rgb(240, 149, 149);
-const COLOR_SHORT: egui::Color32 = egui::Color32::from_rgb(239, 159, 39);
-const COLOR_LONG: egui::Color32 = egui::Color32::from_rgb(85, 183, 235);
-const COLOR_OK: egui::Color32 = egui::Color32::from_rgb(96, 190, 120);
-const COLOR_WARN: egui::Color32 = egui::Color32::from_rgb(239, 159, 39);
-const COLOR_BAD: egui::Color32 = egui::Color32::from_rgb(226, 75, 74);
-const COLOR_MUTED: egui::Color32 = egui::Color32::from_rgb(0x8A, 0x8D, 0x93);
-const COLOR_TEXT: egui::Color32 = egui::Color32::from_rgb(0xF2, 0xF3, 0xF5);
-const BG_APP: egui::Color32 = egui::Color32::from_rgb(0x17, 0x18, 0x1C);
-const BG_CARD: egui::Color32 = egui::Color32::from_rgb(0x1E, 0x20, 0x25);
-const BG_HOVER: egui::Color32 = egui::Color32::from_rgb(0x2A, 0x2D, 0x33);
-const BG_INPUT: egui::Color32 = egui::Color32::from_rgb(0x10, 0x11, 0x14);
-const COLOR_LINE: egui::Color32 = egui::Color32::from_rgba_premultiplied(26, 26, 26, 26);
+/// 界面配色：深色 / 浅色两套，跟随系统切换
+struct Theme {
+    dark: bool,
+    bg: egui::Color32,
+    card: egui::Color32,
+    hover: egui::Color32,
+    input: egui::Color32,
+    line: egui::Color32,
+    text: egui::Color32,
+    muted: egui::Color32,
+    up: egui::Color32,
+    up_soft: egui::Color32,
+    short: egui::Color32,
+    long: egui::Color32,
+    ok: egui::Color32,
+    warn: egui::Color32,
+    bad: egui::Color32,
+    /// 折线图面积填充
+    area: egui::Color32,
+    /// 状态胶囊底色
+    pill: egui::Color32,
+}
+
+impl Theme {
+    fn new(dark: bool) -> Self {
+        if dark {
+            Self {
+                dark,
+                bg: egui::Color32::from_rgb(0x17, 0x18, 0x1C),
+                card: egui::Color32::from_rgb(0x1E, 0x20, 0x25),
+                hover: egui::Color32::from_rgb(0x2A, 0x2D, 0x33),
+                input: egui::Color32::from_rgb(0x10, 0x11, 0x14),
+                line: egui::Color32::from_rgba_premultiplied(26, 26, 26, 26),
+                text: egui::Color32::from_rgb(0xF2, 0xF3, 0xF5),
+                muted: egui::Color32::from_rgb(0x8A, 0x8D, 0x93),
+                up: egui::Color32::from_rgb(226, 75, 74),
+                up_soft: egui::Color32::from_rgb(240, 149, 149),
+                short: egui::Color32::from_rgb(239, 159, 39),
+                long: egui::Color32::from_rgb(85, 183, 235),
+                ok: egui::Color32::from_rgb(96, 190, 120),
+                warn: egui::Color32::from_rgb(239, 159, 39),
+                bad: egui::Color32::from_rgb(226, 75, 74),
+                area: egui::Color32::from_rgba_unmultiplied(226, 75, 74, 36),
+                pill: egui::Color32::from_rgba_unmultiplied(255, 255, 255, 10),
+            }
+        } else {
+            Self {
+                dark,
+                bg: egui::Color32::from_rgb(0xF2, 0xF3, 0xF5),
+                card: egui::Color32::from_rgb(0xFF, 0xFF, 0xFF),
+                hover: egui::Color32::from_rgb(0xE8, 0xEA, 0xED),
+                input: egui::Color32::from_rgb(0xFF, 0xFF, 0xFF),
+                line: egui::Color32::from_rgba_premultiplied(0, 0, 0, 36),
+                text: egui::Color32::from_rgb(0x1B, 0x1D, 0x22),
+                muted: egui::Color32::from_rgb(0x6B, 0x6F, 0x76),
+                up: egui::Color32::from_rgb(0xA3, 0x2D, 0x2D),
+                up_soft: egui::Color32::from_rgb(0xA3, 0x2D, 0x2D),
+                short: egui::Color32::from_rgb(0x85, 0x4F, 0x0B),
+                long: egui::Color32::from_rgb(0x18, 0x5F, 0xA5),
+                ok: egui::Color32::from_rgb(0x0F, 0x6E, 0x56),
+                warn: egui::Color32::from_rgb(0x85, 0x4F, 0x0B),
+                bad: egui::Color32::from_rgb(0xA3, 0x2D, 0x2D),
+                area: egui::Color32::from_rgba_unmultiplied(163, 45, 45, 30),
+                pill: egui::Color32::from_rgba_unmultiplied(0, 0, 0, 10),
+            }
+        }
+    }
+
+    fn label(&self) -> &'static str {
+        if self.dark { "深色" } else { "浅色" }
+    }
+}
+
+/// 读取 Windows 系统主题；true = 深色
+#[cfg(windows)]
+fn read_system_dark() -> bool {
+    use winreg::enums::HKEY_CURRENT_USER;
+    let hk = winreg::RegKey::predef(HKEY_CURRENT_USER);
+    hk.open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+        .and_then(|k| k.get_value::<u32, _>("AppsUseLightTheme"))
+        .map(|v| v == 0)
+        .unwrap_or(true)
+}
+
+#[cfg(not(windows))]
+fn read_system_dark() -> bool { true }
+
 const DEFAULT_PORT: u16 = 2356;
 
 /// 持久化到 data/gui-settings.json 的设置
@@ -68,6 +141,8 @@ struct App {
     cfg: Config,
     client: ApiClient,
     launcher: Launcher,
+    th: Theme,
+    last_theme_check: Instant,
     exe_dir: PathBuf,
     work_dir_str: String,
     rooms: Vec<Room>,
@@ -93,7 +168,10 @@ impl App {
         let launcher = Launcher::new(cfg.base_url.clone(), api::build_auth_header(&cfg.username, &cfg.password));
         let work_dir_str = cfg.work_dir.clone();
         Self {
-            cfg, client, launcher, exe_dir, work_dir_str,
+            cfg, client, launcher,
+            th: Theme::new(read_system_dark()),
+            last_theme_check: Instant::now(),
+            exe_dir, work_dir_str,
             rooms: Vec::new(), series: HashMap::new(), poll_error: None,
             last_poll: Instant::now() - Duration::from_secs(10),
             status: String::new(), add_room_input: String::new(),
@@ -308,6 +386,16 @@ impl eframe::App for App {
         let now = Instant::now();
         self.elapsed += ctx.input(|i| i.unstable_dt as f64);
 
+        // 每 5 秒检查一次系统主题，变了就跟着切换
+        if self.last_theme_check.elapsed() > Duration::from_secs(5) {
+            self.last_theme_check = now;
+            let sys_dark = read_system_dark();
+            if sys_dark != self.th.dark {
+                self.th = Theme::new(sys_dark);
+                apply_style(ctx, &self.th);
+            }
+        }
+
         // 录制核心：首次检查 → 自动拉起 → 等待就绪
         if self.launcher.state == launcher::CoreState::Pending { self.bootstrap(); }
         self.launcher.tick();
@@ -319,9 +407,9 @@ impl eframe::App for App {
         }
 
         let (core_text, core_color) = match self.launcher.state {
-            launcher::CoreState::Ready => (self.launcher.state_text(), COLOR_OK),
-            launcher::CoreState::Starting | launcher::CoreState::Pending => (self.launcher.state_text(), COLOR_WARN),
-            _ => (self.launcher.state_text(), COLOR_BAD),
+            launcher::CoreState::Ready => (self.launcher.state_text(), self.th.ok),
+            launcher::CoreState::Starting | launcher::CoreState::Pending => (self.launcher.state_text(), self.th.warn),
+            _ => (self.launcher.state_text(), self.th.bad),
         };
         let status = self.status.clone();
         let rooms_len = self.rooms.len();
@@ -343,6 +431,13 @@ impl eframe::App for App {
                         if self.show_logs {
                             if let Ok(logs) = self.client.fetch_logs() { self.logs = logs; }
                         }
+                    }
+                    if ui.button(if self.th.dark { "浅色" } else { "深色" })
+                        .on_hover_text("切换界面配色；平时跟随系统，这里可手动切")
+                        .clicked()
+                    {
+                        self.th = Theme::new(!self.th.dark);
+                        apply_style(ctx, &self.th);
                     }
                 });
             });
@@ -421,7 +516,7 @@ impl App {
         ui.add_space(12.0);
         match &self.launcher.state {
             CoreState::NotFound(msg) | CoreState::Failed(msg) => {
-                ui.colored_label(COLOR_BAD, msg);
+                ui.colored_label(self.th.bad, msg);
                 ui.label(weak_text(&format!("录制核心会读取：{}", self.core_config_file().display())));
                 ui.label(weak_text(&format!("录制文件保存到：{}", self.work_dir().display())));
                 if self.launcher.log_path.is_some() {
@@ -437,7 +532,7 @@ impl App {
             }
             _ => {
                 if let Some(e) = &self.poll_error {
-                    ui.colored_label(COLOR_BAD, format!("拉取房间列表失败：{e}"));
+                    ui.colored_label(self.th.bad, format!("拉取房间列表失败：{e}"));
                     ui.label(weak_text(&format!("详见 {}", self.gui_log_file().display())));
                 } else {
                     ui.label("还没有房间，在上方输入房间号后点「添加」。");
@@ -461,8 +556,8 @@ impl App {
     fn render_room_card(&mut self, ui: &mut egui::Ui, room: &Room) {
         let key = room.key();
         let card = egui::Frame::new()
-            .fill(BG_CARD)
-            .stroke(egui::Stroke::new(0.5, COLOR_LINE))
+            .fill(self.th.card)
+            .stroke(egui::Stroke::new(0.5, self.th.line))
             .corner_radius(10.0)
             .inner_margin(egui::Margin::symmetric(14, 10));
 
@@ -476,7 +571,7 @@ impl App {
                         if ui.button("刷新房间信息").clicked() { self.act(&key, "refresh"); ui.close_menu(); }
                         if ui.button("切片").clicked() { self.act(&key, "split"); ui.close_menu(); }
                         ui.separator();
-                        if ui.button(egui::RichText::new("删除房间").color(COLOR_BAD)).clicked() { self.act(&key, "delete"); ui.close_menu(); }
+                        if ui.button(egui::RichText::new("删除房间").color(self.th.bad)).clicked() { self.act(&key, "delete"); ui.close_menu(); }
                     });
                     if ui.add_enabled(room.recording, egui::Button::new("⏵ 播放")).clicked() {
                         let r = room.clone();
@@ -484,7 +579,7 @@ impl App {
                     }
                 });
             });
-            ui.label(egui::RichText::new(room.display_title()).small().color(COLOR_MUTED));
+            ui.label(egui::RichText::new(room.display_title()).small().color(self.th.muted));
             ui.label(egui::RichText::new(format!("{} · 房间 {}", room.display_area(), room.room_id)).small().weak());
 
             // 码率行：大数字 + 单位，右侧录制控制
@@ -493,9 +588,9 @@ impl App {
                 let mbps = room.io_stats.network_mbps;
                 ui.add(egui::Label::new(
                     egui::RichText::new(if mbps.is_finite() { format!("{mbps:.2}") } else { "—".to_string() })
-                        .size(22.0).strong().color(if room.recording { COLOR_UP_SOFT } else { COLOR_MUTED }),
+                        .size(22.0).strong().color(if room.recording { self.th.up_soft } else { self.th.muted }),
                 ));
-                ui.label(egui::RichText::new("Mbps").small().color(COLOR_MUTED));
+                ui.label(egui::RichText::new("Mbps").small().color(self.th.muted));
                 ui.label(egui::RichText::new(format!("写入 {:.2} MB/s", room.io_stats.disk_mbps)).small().weak());
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if room.recording {
@@ -520,20 +615,20 @@ impl App {
                     if !area.is_empty() {
                         plot_ui.polygon(
                             Polygon::new("面积", area)
-                                .fill_color(egui::Color32::from_rgba_unmultiplied(226, 75, 74, 36))
+                                .fill_color(self.th.area)
                                 .stroke(egui::Stroke::NONE),
                         );
                     }
-                    plot_ui.line(Line::new("码率", s.points()).color(COLOR_UP).width(1.8_f32));
+                    plot_ui.line(Line::new("码率", s.points()).color(self.th.up).width(1.8_f32));
                     if s.len() >= self.cfg.ma_long {
-                        plot_ui.line(Line::new(format!("MA{}", self.cfg.ma_short), s.ma(self.cfg.ma_short)).color(COLOR_SHORT).width(1.2_f32));
-                        plot_ui.line(Line::new(format!("MA{}", self.cfg.ma_long), s.ma(self.cfg.ma_long)).color(COLOR_LONG).width(1.2_f32));
+                        plot_ui.line(Line::new(format!("MA{}", self.cfg.ma_short), s.ma(self.cfg.ma_short)).color(self.th.short).width(1.2_f32));
+                        plot_ui.line(Line::new(format!("MA{}", self.cfg.ma_long), s.ma(self.cfg.ma_long)).color(self.th.long).width(1.2_f32));
                     }
                 }).response;
                 let (avg, max, _min) = s.stats();
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("━ 码率").small().color(COLOR_UP));
-                    ui.label(egui::RichText::new(format!("╌ MA{}", self.cfg.ma_long)).small().color(COLOR_LONG));
+                    ui.label(egui::RichText::new("━ 码率").small().color(self.th.up));
+                    ui.label(egui::RichText::new(format!("╌ MA{}", self.cfg.ma_long)).small().color(self.th.long));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(egui::RichText::new(format!(
                             "均值 {:.2} · 峰值 {:.2} · 速度比 {}",
@@ -549,8 +644,8 @@ impl App {
                         ui.label(egui::RichText::new("码率详情").strong());
                         ui.label(format!("当前 {:.2} Mbps", room.io_stats.network_mbps));
                         ui.label(format!("均值 {:.2} / 峰值 {:.2} / 谷值 {:.2}", avg, max, _min));
-                        ui.colored_label(COLOR_SHORT, format!("MA{short} {ma_s:.2}"));
-                        ui.colored_label(COLOR_LONG, format!("MA{long} {ma_l:.2}"));
+                        ui.colored_label(self.th.short, format!("MA{short} {ma_s:.2}"));
+                        ui.colored_label(self.th.long, format!("MA{long} {ma_l:.2}"));
                         ui.label(format!("写入 {:.2} MB/s · 总写入 {:.1} MB",
                             room.io_stats.disk_mbps, room.recording_stats.total_output_bytes as f64 / 1048576.0));
                     });
@@ -562,19 +657,21 @@ impl App {
     /// 状态胶囊：录制中 / 直播中 / 空闲
     fn status_pill(&self, ui: &mut egui::Ui, room: &Room) {
         let (text, color) = if room.recording {
-            ("● 录制中", COLOR_UP)
+            ("● 录制中", self.th.up)
         } else if room.streaming {
-            ("○ 直播中", COLOR_WARN)
+            ("○ 直播中", self.th.warn)
         } else {
-            ("空闲", COLOR_MUTED)
+            ("空闲", self.th.muted)
         };
+        // 文字用主题主色保证对比度，彩色只留在描边上
+        let text_color = if room.recording || room.streaming { self.th.text } else { self.th.text };
         egui::Frame::new()
-            .fill(egui::Color32::from_rgba_unmultiplied(255, 255, 255, 14))
-            .stroke(egui::Stroke::new(0.5, color.gamma_multiply(0.55)))
+            .fill(self.th.pill)
+            .stroke(egui::Stroke::new(0.5, color.gamma_multiply(0.5)))
             .corner_radius(99.0)
             .inner_margin(egui::Margin::symmetric(8, 2))
             .show(ui, |ui| {
-                ui.colored_label(color, egui::RichText::new(text).size(11.0));
+                ui.colored_label(text_color, egui::RichText::new(text).size(11.0).strong());
             });
     }
 
@@ -677,33 +774,35 @@ fn port_of(url: &str) -> Option<u16> {
     url.rsplit(':').next()?.trim_end_matches('/').parse::<u16>().ok()
 }
 
-/// 暗色主题：黑底红光的科技感配色，所有控件的底色/描边/文字统一走这套
-fn apply_dark_theme(ctx: &egui::Context) {
+/// 把主题套到 egui 全局样式上
+fn apply_style(ctx: &egui::Context, th: &Theme) {
     let mut style = (*ctx.style()).clone();
     let v = &mut style.visuals;
-    v.dark_mode = true;
-    v.panel_fill = BG_APP;
-    v.window_fill = BG_CARD;
-    v.extreme_bg_color = BG_INPUT;
-    v.faint_bg_color = BG_CARD;
-    v.override_text_color = Some(COLOR_TEXT);
-    v.widgets.noninteractive.bg_stroke = egui::Stroke::new(0.5, COLOR_LINE);
-    v.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, COLOR_TEXT);
-    v.widgets.inactive.bg_fill = BG_CARD;
-    v.widgets.inactive.weak_bg_fill = BG_CARD;
-    v.widgets.inactive.bg_stroke = egui::Stroke::new(0.5, COLOR_LINE);
-    v.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, COLOR_TEXT);
-    v.widgets.hovered.bg_fill = BG_HOVER;
-    v.widgets.hovered.weak_bg_fill = BG_HOVER;
-    v.widgets.hovered.bg_stroke = egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(255, 255, 255, 60));
-    v.widgets.active.bg_fill = BG_HOVER;
-    v.widgets.active.weak_bg_fill = BG_HOVER;
-    v.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(226, 75, 74, 90);
-    v.selection.stroke = egui::Stroke::new(1.0, COLOR_UP_SOFT);
+    v.dark_mode = th.dark;
+    v.panel_fill = th.bg;
+    v.window_fill = th.card;
+    v.extreme_bg_color = th.input;
+    v.faint_bg_color = th.card;
+    v.override_text_color = Some(th.text);
+    v.widgets.noninteractive.bg_stroke = egui::Stroke::new(0.5, th.line);
+    v.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, th.text);
+    v.widgets.inactive.bg_fill = th.card;
+    v.widgets.inactive.weak_bg_fill = th.card;
+    v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, th.line);
+    v.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, th.text);
+    v.widgets.hovered.bg_fill = th.hover;
+    v.widgets.hovered.weak_bg_fill = th.hover;
+    v.widgets.hovered.bg_stroke = egui::Stroke::new(0.5, if th.dark {
+        egui::Color32::from_rgba_unmultiplied(255, 255, 255, 60)
+    } else {
+        egui::Color32::from_rgba_unmultiplied(0, 0, 0, 50)
+    });
+    v.widgets.active.bg_fill = th.hover;
+    v.widgets.active.weak_bg_fill = th.hover;
+    v.selection.bg_fill = th.area;
+    v.selection.stroke = egui::Stroke::new(1.0, th.up);
     style.spacing.item_spacing = egui::vec2(8.0, 6.0);
     style.spacing.button_padding = egui::vec2(10.0, 4.0);
-    // 输入框：深底 + 明显描边，避免在暗色卡片上隐形
-    style.visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgba_premultiplied(60, 62, 68, 160));
     ctx.set_style(style);
 }
 
@@ -744,11 +843,12 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| {
             install_chinese_font(&cc.egui_ctx);
-            apply_dark_theme(&cc.egui_ctx);
+            let mut app = App::new();
+            apply_style(&cc.egui_ctx, &app.th);
             if minimized {
                 cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
             }
-            Ok(Box::new(App::new()))
+            Ok(Box::new(app))
         }),
     )
 }
