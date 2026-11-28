@@ -369,25 +369,30 @@ impl eframe::App for App {
 
             egui::ScrollArea::vertical().show(ui, |ui| {
                 let rooms = self.rooms.clone();
-                // 自适应网格：按可用宽度决定列数（每格最小 360px，最多 4 列）
+                // 自适应网格：按可用宽度决定列数（每格最小 360px，最多 4 列）。
+                // 用 Grid 而不是手动 horizontal 排布，保证同行卡片顶部对齐。
                 let avail = ui.available_width();
                 let gap = 10.0;
                 let min_card = 360.0;
                 let cols = ((avail / min_card).floor() as usize).clamp(1, 4);
                 let col_w = ((avail - gap * (cols as f32 - 1.0)) / cols as f32).max(240.0);
-                for chunk in rooms.chunks(cols) {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = gap;
-                        for room in chunk {
+                egui::Grid::new("room_grid")
+                    .num_columns(cols)
+                    .min_col_width(col_w)
+                    .spacing(egui::vec2(gap, 6.0))
+                    .show(ui, |ui| {
+                        for (i, room) in rooms.iter().enumerate() {
                             ui.allocate_ui_with_layout(
                                 egui::vec2(col_w, 0.0),
                                 egui::Layout::top_down(egui::Align::Min),
                                 |ui| self.render_room_card(ui, room),
                             );
+                            if (i + 1) % cols == 0 {
+                                ui.end_row();
+                            }
                         }
+                        ui.end_row();
                     });
-                    ui.add_space(6.0);
-                }
                 if rooms.is_empty() {
                     self.render_empty_hint(ui);
                 }
