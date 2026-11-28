@@ -369,8 +369,23 @@ impl eframe::App for App {
 
             egui::ScrollArea::vertical().show(ui, |ui| {
                 let rooms = self.rooms.clone();
-                for room in &rooms {
-                    self.render_room_card(ui, room);
+                // 自适应网格：按可用宽度决定列数（每格最小 360px，最多 4 列）
+                let avail = ui.available_width();
+                let gap = 10.0;
+                let min_card = 360.0;
+                let cols = ((avail / min_card).floor() as usize).clamp(1, 4);
+                let col_w = ((avail - gap * (cols as f32 - 1.0)) / cols as f32).max(240.0);
+                for chunk in rooms.chunks(cols) {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = gap;
+                        for room in chunk {
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(col_w, 0.0),
+                                egui::Layout::top_down(egui::Align::Min),
+                                |ui| self.render_room_card(ui, room),
+                            );
+                        }
+                    });
                     ui.add_space(6.0);
                 }
                 if rooms.is_empty() {
