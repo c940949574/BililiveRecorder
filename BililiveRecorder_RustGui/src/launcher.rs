@@ -320,16 +320,41 @@ impl PlayerChoice {
     }
 }
 
+/// 探测正在写入的 FLV 的最后视频时间戳（秒）。用 ffprobe 扫最后一个包，
+/// 比 format 元数据可靠（头部 duration 在增长中的文件里是假值）。
+fn probe_last_pts(ffplay: &Path, file: &Path) -> Option<f64> {
+    let ffprobe = ffplay.with_file_name("ffprobe.exe");
+    if !ffprobe.is_file() { return None; }
+    let out = Command::new(&ffprobe)
+        .args(["-v", "error", "-select_streams", "v",
+               "-show_entries", "packet=pts_time", "-of", "csv=p=0"])
+        .arg(file)
+        .creation_flags(CREATE_NO_WINDOW)
+        .output().ok()?;
+    let last = String::from_utf8_lossy(&out.stdout)
+        .lines().rev().find(|l| !l.trim().is_empty())?.trim().to_string();
+    last.parse::<f64>().ok().filter(|v| v.is_finite() && *v >= 0.0)
+}
+
 /// 启动外部播放器播放文件。非阻塞：不等播放器退出。
 pub fn launch_player(choice: &PlayerChoice, file: &Path, title: &str) -> Result<(), String> {
     let (exe, args): (&Path, Vec<String>) = match choice {
         PlayerChoice::System => return open_with_default(file),
-        PlayerChoice::Ffplay(exe) => (exe, vec![
-            "-autoexit".into(),
-            "-loglevel".into(), "error".into(),
-            "-window_title".into(), title.into(),
-            file.display().to_string(),
-        ]),
+        PlayerChoice::Ffplay(exe) => {
+            let mut a = vec![
+                "-autoexit".into(),
+                "-loglevel".into(), "error".into(),
+                "-window_title".into(), title.into(),
+            ];
+            // 增长中的文件从头播会落后直播：快进到最后时间戳前 ~1.5 秒，直接对上实时
+            if let Some(pts) = probe_last_pts(exe, file) {
+                let ss = (pts - 1.5).max(0.0);
+                a.push("-ss".into());
+                a.push(format!("{ss:.3}"));
+            }
+            a.push(file.display().to_string());
+            (exe, a)
+        }
         PlayerChoice::Generic(exe) => (exe, vec![file.display().to_string()]),
     };
     let mut cmd = Command::new(exe);
