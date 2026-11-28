@@ -422,7 +422,7 @@ impl eframe::App for App {
                 if rooms_len > 0 { ui.label(format!("{rooms_len} 个房间")); }
                 if !status.is_empty() {
                     ui.separator();
-                    ui.label(weak_text(&status));
+                    ui.label(weak_text(&self.th, &status));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("设置").clicked() { self.show_settings ^= true; }
@@ -499,8 +499,8 @@ impl eframe::App for App {
 }
 
 /// 富文本小工具：弱化文字
-fn weak_text(s: &str) -> egui::RichText {
-    egui::RichText::new(s.to_string()).weak()
+fn weak_text(th: &Theme, s: &str) -> egui::RichText {
+    egui::RichText::new(s.to_string()).color(th.muted)
 }
 
 /// 有限数值保留 n 位小数；NaN / Infinity 显示为 "—"
@@ -517,10 +517,10 @@ impl App {
         match &self.launcher.state {
             CoreState::NotFound(msg) | CoreState::Failed(msg) => {
                 ui.colored_label(self.th.bad, msg);
-                ui.label(weak_text(&format!("录制核心会读取：{}", self.core_config_file().display())));
-                ui.label(weak_text(&format!("录制文件保存到：{}", self.work_dir().display())));
+                ui.label(weak_text(&self.th, &format!("录制核心会读取：{}", self.core_config_file().display())));
+                ui.label(weak_text(&self.th, &format!("录制文件保存到：{}", self.work_dir().display())));
                 if self.launcher.log_path.is_some() {
-                    ui.label(weak_text(&format!("运行日志：{}", self.cli_log_file().display())));
+                    ui.label(weak_text(&self.th, &format!("运行日志：{}", self.cli_log_file().display())));
                 }
             }
             CoreState::Disabled => {
@@ -533,7 +533,7 @@ impl App {
             _ => {
                 if let Some(e) = &self.poll_error {
                     ui.colored_label(self.th.bad, format!("拉取房间列表失败：{e}"));
-                    ui.label(weak_text(&format!("详见 {}", self.gui_log_file().display())));
+                    ui.label(weak_text(&self.th, &format!("详见 {}", self.gui_log_file().display())));
                 } else {
                     ui.label("还没有房间，在上方输入房间号后点「添加」。");
                 }
@@ -564,7 +564,7 @@ impl App {
         card.show(ui, |ui| {
             // 标题行：名字 + 状态胶囊 + 播放 + 更多菜单
             ui.horizontal(|ui| {
-                ui.strong(egui::RichText::new(room.display_name()).size(15.0));
+                ui.label(egui::RichText::new(room.display_name()).size(15.0).strong().color(self.th.text));
                 self.status_pill(ui, room);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.menu_button("…", |ui| {
@@ -580,7 +580,7 @@ impl App {
                 });
             });
             ui.label(egui::RichText::new(room.display_title()).small().color(self.th.muted));
-            ui.label(egui::RichText::new(format!("{} · 房间 {}", room.display_area(), room.room_id)).small().weak());
+            ui.label(egui::RichText::new(format!("{} · 房间 {}", room.display_area(), room.room_id)).small().color(self.th.muted));
 
             // 码率行：大数字 + 单位，右侧录制控制
             ui.add_space(2.0);
@@ -591,7 +591,7 @@ impl App {
                         .size(22.0).strong().color(if room.recording { self.th.up_soft } else { self.th.muted }),
                 ));
                 ui.label(egui::RichText::new("Mbps").small().color(self.th.muted));
-                ui.label(egui::RichText::new(format!("写入 {:.2} MB/s", room.io_stats.disk_mbps)).small().weak());
+                ui.label(egui::RichText::new(format!("写入 {:.2} MB/s", room.io_stats.disk_mbps)).small().color(self.th.muted));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if room.recording {
                         if ui.small_button("停止录制").clicked() { self.act(&key, "stop"); }
@@ -633,7 +633,7 @@ impl App {
                         ui.label(egui::RichText::new(format!(
                             "均值 {:.2} · 峰值 {:.2} · 速度比 {}",
                             avg, max, fmt_finite(room.recording_stats.duration_ratio, 2),
-                        )).small().weak());
+                        )).small().color(self.th.muted));
                     });
                 });
                 if response.hovered() {
@@ -797,8 +797,11 @@ fn apply_style(ctx: &egui::Context, th: &Theme) {
     } else {
         egui::Color32::from_rgba_unmultiplied(0, 0, 0, 50)
     });
+    // strong()/weak() 文本不走 override_text_color，分别取 active/inactive 的字色
+    v.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, th.text);
     v.widgets.active.bg_fill = th.hover;
     v.widgets.active.weak_bg_fill = th.hover;
+    v.widgets.active.fg_stroke = egui::Stroke::new(1.0, th.text);
     v.selection.bg_fill = th.area;
     v.selection.stroke = egui::Stroke::new(1.0, th.up);
     style.spacing.item_spacing = egui::vec2(8.0, 6.0);
