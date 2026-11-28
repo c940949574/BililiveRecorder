@@ -727,8 +727,15 @@ impl App {
                 ui.separator();
                 ui.label("录制核心");
                 ui.checkbox(&mut self.cfg.auto_launch, "连不上时自动启动 cli 文件夹里的录制核心");
-                ui.label("录制文件保存目录（重启后生效）");
-                ui.text_edit_singleline(&mut self.work_dir_str);
+                ui.label("录制文件保存目录（修改保存后自动重启录制核心）");
+                ui.horizontal(|ui| {
+                    ui.text_edit_singleline(&mut self.work_dir_str);
+                    if ui.small_button("浏览…").clicked() {
+                        if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                            self.work_dir_str = dir.display().to_string();
+                        }
+                    }
+                });
                 ui.horizontal(|ui| {
                     if ui.small_button("打开保存目录").clicked() {
                         let _ = std::fs::create_dir_all(&work_dir);
@@ -770,9 +777,19 @@ impl App {
 
                 ui.separator();
                 if ui.button("保存并重连").clicked() {
-                    self.cfg.work_dir = self.work_dir_str.clone();
+                    let old_wd = self.cfg.work_dir.clone();
+                    self.cfg.work_dir = self.work_dir_str.trim_matches('"').trim().to_string();
+                    let work_dir_changed = old_wd != self.cfg.work_dir;
                     match self.save_settings() {
-                        Ok(()) => self.reconnect(),
+                        Ok(()) => {
+                            // 目录变了就重启核心，让新目录立即生效（核心是 GUI 拉起时才传目录）
+                            if work_dir_changed && self.launcher.pid().is_some() {
+                                self.launcher.stop();
+                                self.launcher.reset();
+                                self.status = "工作目录已更改，录制核心正在重启…".into();
+                            }
+                            self.reconnect();
+                        }
                         Err(e) => self.status = e,
                     }
                 }
