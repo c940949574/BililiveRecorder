@@ -25,6 +25,7 @@ const COLOR_TEXT: egui::Color32 = egui::Color32::from_rgb(0xF2, 0xF3, 0xF5);
 const BG_APP: egui::Color32 = egui::Color32::from_rgb(0x17, 0x18, 0x1C);
 const BG_CARD: egui::Color32 = egui::Color32::from_rgb(0x1E, 0x20, 0x25);
 const BG_HOVER: egui::Color32 = egui::Color32::from_rgb(0x2A, 0x2D, 0x33);
+const BG_INPUT: egui::Color32 = egui::Color32::from_rgb(0x10, 0x11, 0x14);
 const COLOR_LINE: egui::Color32 = egui::Color32::from_rgba_premultiplied(26, 26, 26, 26);
 const DEFAULT_PORT: u16 = 2356;
 
@@ -327,7 +328,7 @@ impl eframe::App for App {
 
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.heading("录播姬 · Rust GUI");
+                ui.heading("录播姬");
                 ui.separator();
                 ui.colored_label(core_color, &core_text);
                 if rooms_len > 0 { ui.label(format!("{rooms_len} 个房间")); }
@@ -451,7 +452,7 @@ impl App {
                 ui.strong(egui::RichText::new(room.display_name()).size(15.0));
                 self.status_pill(ui, room);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.menu_button("⋮", |ui| {
+                    ui.menu_button("…", |ui| {
                         if ui.button("刷新房间信息").clicked() { self.act(&key, "refresh"); ui.close_menu(); }
                         if ui.button("切片").clicked() { self.act(&key, "split"); ui.close_menu(); }
                         ui.separator();
@@ -663,7 +664,7 @@ fn apply_dark_theme(ctx: &egui::Context) {
     v.dark_mode = true;
     v.panel_fill = BG_APP;
     v.window_fill = BG_CARD;
-    v.extreme_bg_color = BG_CARD;
+    v.extreme_bg_color = BG_INPUT;
     v.faint_bg_color = BG_CARD;
     v.override_text_color = Some(COLOR_TEXT);
     v.widgets.noninteractive.bg_stroke = egui::Stroke::new(0.5, COLOR_LINE);
@@ -681,6 +682,8 @@ fn apply_dark_theme(ctx: &egui::Context) {
     v.selection.stroke = egui::Stroke::new(1.0, COLOR_UP_SOFT);
     style.spacing.item_spacing = egui::vec2(8.0, 6.0);
     style.spacing.button_padding = egui::vec2(10.0, 4.0);
+    // 输入框：深底 + 明显描边，避免在暗色卡片上隐形
+    style.visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgba_premultiplied(60, 62, 68, 160));
     ctx.set_style(style);
 }
 
