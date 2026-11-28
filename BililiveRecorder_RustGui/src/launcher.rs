@@ -325,12 +325,13 @@ impl PlayerChoice {
 fn probe_last_pts(ffplay: &Path, file: &Path) -> Option<f64> {
     let ffprobe = ffplay.with_file_name("ffprobe.exe");
     if !ffprobe.is_file() { return None; }
-    let out = Command::new(&ffprobe)
-        .args(["-v", "error", "-select_streams", "v",
-               "-show_entries", "packet=pts_time", "-of", "csv=p=0"])
-        .arg(file)
-        .creation_flags(CREATE_NO_WINDOW)
-        .output().ok()?;
+    let mut cmd = Command::new(&ffprobe);
+    cmd.args(["-v", "error", "-select_streams", "v",
+              "-show_entries", "packet=pts_time", "-of", "csv=p=0"])
+        .arg(file);
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    let out = cmd.output().ok()?;
     let last = String::from_utf8_lossy(&out.stdout)
         .lines().rev().find(|l| !l.trim().is_empty())?.trim().to_string();
     last.parse::<f64>().ok().filter(|v| v.is_finite() && *v >= 0.0)
