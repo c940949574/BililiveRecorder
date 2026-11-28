@@ -51,6 +51,16 @@ impl Series {
         )
     }
 
+    /// 面积填充用：折线点 + 底边闭合。不足 2 个点时返回空。
+    pub fn area_points(&self) -> Vec<[f64; 2]> {
+        if self.data.len() < 2 { return Vec::new(); }
+        let mut pts: Vec<[f64; 2]> = self.data.iter().map(|s| [s.time, s.mbps]).collect();
+        let (t0, t1) = (pts[0][0], pts[pts.len() - 1][0]);
+        pts.push([t1, 0.0]);
+        pts.push([t0, 0.0]);
+        pts
+    }
+
     pub fn disk_points(&self) -> egui_plot::PlotPoints {
         egui_plot::PlotPoints::from(
             self.data.iter().map(|s| [s.time, s.disk_mbps]).collect::<Vec<_>>()

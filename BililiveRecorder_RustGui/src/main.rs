@@ -4,7 +4,7 @@ mod series;
 
 use api::{ApiClient, Room};
 use eframe::egui;
-use egui_plot::{Line, Plot};
+use egui_plot::{Line, Plot, Polygon};
 use launcher::Launcher;
 use serde::{Deserialize, Serialize};
 use series::{Sample, Series};
@@ -14,12 +14,18 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 const COLOR_UP: egui::Color32 = egui::Color32::from_rgb(226, 75, 74);
+const COLOR_UP_SOFT: egui::Color32 = egui::Color32::from_rgb(240, 149, 149);
 const COLOR_SHORT: egui::Color32 = egui::Color32::from_rgb(239, 159, 39);
 const COLOR_LONG: egui::Color32 = egui::Color32::from_rgb(85, 183, 235);
 const COLOR_OK: egui::Color32 = egui::Color32::from_rgb(96, 190, 120);
 const COLOR_WARN: egui::Color32 = egui::Color32::from_rgb(239, 159, 39);
 const COLOR_BAD: egui::Color32 = egui::Color32::from_rgb(226, 75, 74);
-const COLOR_MUTED: egui::Color32 = egui::Color32::from_rgb(140, 140, 140);
+const COLOR_MUTED: egui::Color32 = egui::Color32::from_rgb(0x8A, 0x8D, 0x93);
+const COLOR_TEXT: egui::Color32 = egui::Color32::from_rgb(0xF2, 0xF3, 0xF5);
+const BG_APP: egui::Color32 = egui::Color32::from_rgb(0x17, 0x18, 0x1C);
+const BG_CARD: egui::Color32 = egui::Color32::from_rgb(0x1E, 0x20, 0x25);
+const BG_HOVER: egui::Color32 = egui::Color32::from_rgb(0x2A, 0x2D, 0x33);
+const COLOR_LINE: egui::Color32 = egui::Color32::from_rgba_unmultiplied(255, 255, 255, 26);
 const DEFAULT_PORT: u16 = 2356;
 
 /// 持久化到 data/gui-settings.json 的设置
@@ -434,73 +440,121 @@ impl App {
     fn render_room_card(&mut self, ui: &mut egui::Ui, room: &Room) {
         let key = room.key();
         let card = egui::Frame::new()
-            .fill(ui.style().visuals.panel_fill)
-            .stroke(ui.style().visuals.widgets.noninteractive.bg_stroke)
-            .corner_radius(8.0)
-            .inner_margin(egui::Margin::symmetric(10, 8));
+            .fill(BG_CARD)
+            .stroke(egui::Stroke::new(0.5, COLOR_LINE))
+            .corner_radius(10.0)
+            .inner_margin(egui::Margin::symmetric(14, 10));
 
         card.show(ui, |ui| {
+            // 标题行：名字 + 状态胶囊 + 播放 + 更多菜单
             ui.horizontal(|ui| {
-                ui.strong(room.display_name());
-                if room.recording {
-                    ui.colored_label(COLOR_UP, "● 录制中");
-                } else if room.streaming {
-                    ui.colored_label(COLOR_WARN, "○ 直播中");
-                }
-            });
-            ui.label(egui::RichText::new(room.display_title()).small());
-            ui.label(egui::RichText::new(format!("{} · UID {} · 房间 {}", room.display_area(), room.uid, room.room_id)).small().weak());
-
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(format!("{:.2} Mbps", room.io_stats.network_mbps)).color(COLOR_UP).strong());
-                ui.label(egui::RichText::new(format!("写入 {:.2} MB/s", room.io_stats.disk_mbps)).small().weak());
+                ui.strong(egui::RichText::new(room.display_name()).size(15.0));
+                self.status_pill(ui, room);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add_enabled(room.recording, egui::Button::new("播放").small()).clicked() {
+                    ui.menu_button("⋮", |ui| {
+                        if ui.button("刷新房间信息").clicked() { self.act(&key, "refresh"); ui.close(); }
+                        if ui.button("切片").clicked() { self.act(&key, "split"); ui.close(); }
+                        ui.separator();
+                        if ui.button(egui::RichText::new("删除房间").color(COLOR_BAD)).clicked() { self.act(&key, "delete"); ui.close(); }
+                    });
+                    if ui.add_enabled(room.recording, egui::Button::new("⏵ 播放")).clicked() {
                         let r = room.clone();
                         self.play_current(&r);
                     }
-                    if ui.small_button("删").on_hover_text("删除房间").clicked() { self.act(&key, "delete"); }
-                    if ui.small_button("刷").on_hover_text("刷新房间信息").clicked() { self.act(&key, "refresh"); }
-                    if ui.small_button("切").on_hover_text("切片").clicked() { self.act(&key, "split"); }
-                    if ui.small_button("录").on_hover_text("开始录制").clicked() { self.act(&key, "start"); }
-                    if ui.small_button("停").on_hover_text("停止录制").clicked() { self.act(&key, "stop"); }
+                });
+            });
+            ui.label(egui::RichText::new(room.display_title()).small().color(COLOR_MUTED));
+            ui.label(egui::RichText::new(format!("{} · 房间 {}", room.display_area(), room.room_id)).small().weak());
+
+            // 码率行：大数字 + 单位，右侧录制控制
+            ui.add_space(2.0);
+            ui.horizontal(|ui| {
+                let mbps = room.io_stats.network_mbps;
+                ui.add(egui::Label::new(
+                    egui::RichText::new(if mbps.is_finite() { format!("{mbps:.2}") } else { "—".to_string() })
+                        .size(22.0).strong().color(if room.recording { COLOR_UP_SOFT } else { COLOR_MUTED }),
+                ));
+                ui.label(egui::RichText::new("Mbps").small().color(COLOR_MUTED));
+                ui.label(egui::RichText::new(format!("写入 {:.2} MB/s", room.io_stats.disk_mbps)).small().weak());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if room.recording {
+                        if ui.small_button("停止录制").clicked() { self.act(&key, "stop"); }
+                    } else if ui.small_button("开始录制").clicked() { self.act(&key, "start"); }
                 });
             });
 
+            // 录制中：码率折线（面积填充 + MA 均线）
             if room.recording {
                 let s = self.series.get(&key).cloned().unwrap_or_else(|| Series::new(self.cfg.max_points));
                 let plot_id = egui::Id::new(format!("spark_{}", key));
                 let plot = Plot::new(plot_id)
-                    .height(48.0)
+                    .height(56.0)
                     .show_axes(false)
                     .show_grid(false)
                     .allow_zoom(false)
                     .allow_drag(false)
                     .allow_scroll(false);
                 let response = plot.show(ui, |plot_ui| {
-                    plot_ui.line(Line::new("码率", s.points()).color(COLOR_UP).width(2.0_f32));
+                    let area = s.area_points();
+                    if !area.is_empty() {
+                        plot_ui.polygon(
+                            Polygon::new("面积", area)
+                                .fill(egui::Color32::from_rgba_unmultiplied(226, 75, 74, 36))
+                                .stroke(egui::Stroke::NONE),
+                        );
+                    }
+                    plot_ui.line(Line::new("码率", s.points()).color(COLOR_UP).width(1.8_f32));
                     if s.len() >= self.cfg.ma_long {
-                        plot_ui.line(Line::new(format!("MA{}", self.cfg.ma_short), s.ma(self.cfg.ma_short)).color(COLOR_SHORT).width(1.5_f32));
-                        plot_ui.line(Line::new(format!("MA{}", self.cfg.ma_long), s.ma(self.cfg.ma_long)).color(COLOR_LONG).width(1.5_f32));
+                        plot_ui.line(Line::new(format!("MA{}", self.cfg.ma_short), s.ma(self.cfg.ma_short)).color(COLOR_SHORT).width(1.2_f32));
+                        plot_ui.line(Line::new(format!("MA{}", self.cfg.ma_long), s.ma(self.cfg.ma_long)).color(COLOR_LONG).width(1.2_f32));
                     }
                 }).response;
+                let (avg, max, _min) = s.stats();
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("━ 码率").small().color(COLOR_UP));
+                    ui.label(egui::RichText::new(format!("╌ MA{}", self.cfg.ma_long)).small().color(COLOR_LONG));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(egui::RichText::new(format!(
+                            "均值 {:.2} · 峰值 {:.2} · 速度比 {}",
+                            avg, max, fmt_finite(room.recording_stats.duration_ratio, 2),
+                        )).small().weak());
+                    });
+                });
                 if response.hovered() {
-                    let (avg, max, min) = s.stats();
                     let tip_pos = response.hover_pos().unwrap_or(response.rect.center());
                     let (short, long) = (self.cfg.ma_short, self.cfg.ma_long);
                     let (ma_s, ma_l) = (self.ma_last(&s, short), self.ma_last(&s, long));
                     egui::show_tooltip_at(ui.ctx(), ui.layer_id(), plot_id.with("tip"), tip_pos, |ui| {
                         ui.label(egui::RichText::new("码率详情").strong());
                         ui.label(format!("当前 {:.2} Mbps", room.io_stats.network_mbps));
-                        ui.label(format!("均值 {:.2} / 峰值 {:.2} / 谷值 {:.2}", avg, max, min));
+                        ui.label(format!("均值 {:.2} / 峰值 {:.2} / 谷值 {:.2}", avg, max, _min));
                         ui.colored_label(COLOR_SHORT, format!("MA{short} {ma_s:.2}"));
                         ui.colored_label(COLOR_LONG, format!("MA{long} {ma_l:.2}"));
-                        ui.label(format!("写入 {:.2} MB/s · 速度比 {}", room.io_stats.disk_mbps, fmt_finite(room.recording_stats.duration_ratio, 2)));
-                        ui.label(format!("总写入 {:.1} MB", room.recording_stats.total_output_bytes as f64 / 1048576.0));
+                        ui.label(format!("写入 {:.2} MB/s · 总写入 {:.1} MB",
+                            room.io_stats.disk_mbps, room.recording_stats.total_output_bytes as f64 / 1048576.0));
                     });
                 }
             }
         });
+    }
+
+    /// 状态胶囊：录制中 / 直播中 / 空闲
+    fn status_pill(&self, ui: &mut egui::Ui, room: &Room) {
+        let (text, color) = if room.recording {
+            ("● 录制中", COLOR_UP)
+        } else if room.streaming {
+            ("○ 直播中", COLOR_WARN)
+        } else {
+            ("空闲", COLOR_MUTED)
+        };
+        egui::Frame::new()
+            .fill(egui::Color32::from_rgba_unmultiplied(255, 255, 255, 14))
+            .stroke(egui::Stroke::new(0.5, color.gamma_multiply(0.55)))
+            .corner_radius(99.0)
+            .inner_margin(egui::Margin::symmetric(8, 2))
+            .show(ui, |ui| {
+                ui.colored_label(color, egui::RichText::new(text).size(11.0));
+            });
     }
 
     fn render_settings(&mut self, ctx: &egui::Context) {
@@ -602,8 +656,35 @@ fn port_of(url: &str) -> Option<u16> {
     url.rsplit(':').next()?.trim_end_matches('/').parse::<u16>().ok()
 }
 
-fn install_chinese_font(ctx: &egui::Context) {
-    let candidates = [
+/// 暗色主题：黑底红光的科技感配色，所有控件的底色/描边/文字统一走这套
+fn apply_dark_theme(ctx: &egui::Context) {
+    let mut style = (*ctx.style()).clone();
+    let v = &mut style.visuals;
+    v.dark_mode = true;
+    v.panel_fill = BG_APP;
+    v.window_fill = BG_CARD;
+    v.extreme_bg_color = BG_CARD;
+    v.faint_bg_color = BG_CARD;
+    v.override_text_color = Some(COLOR_TEXT);
+    v.widgets.noninteractive.bg_stroke = egui::Stroke::new(0.5, COLOR_LINE);
+    v.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, COLOR_TEXT);
+    v.widgets.inactive.bg_fill = BG_CARD;
+    v.widgets.inactive.weak_bg_fill = BG_CARD;
+    v.widgets.inactive.bg_stroke = egui::Stroke::new(0.5, COLOR_LINE);
+    v.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, COLOR_TEXT);
+    v.widgets.hovered.bg_fill = BG_HOVER;
+    v.widgets.hovered.weak_bg_fill = BG_HOVER;
+    v.widgets.hovered.bg_stroke = egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(255, 255, 255, 60));
+    v.widgets.active.bg_fill = BG_HOVER;
+    v.widgets.active.weak_bg_fill = BG_HOVER;
+    v.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(226, 75, 74, 90);
+    v.selection.stroke = egui::Stroke::new(1.0, COLOR_UP_SOFT);
+    style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+    style.spacing.button_padding = egui::vec2(10.0, 4.0);
+    ctx.set_style(style);
+}
+
+fn install_chinese_font(ctx: &egui::Context) {    let candidates = [
         r"C:\Users\94094\AppData\Roaming\kingsoft\office6\docerFonts\MiSans Bold.ttf",
         r"C:\Windows\Fonts\msyh.ttc",
         r"C:\Users\94094\AppData\Local\Microsoft\Windows\Fonts\MiSans VF.ttf",
@@ -640,6 +721,7 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| {
             install_chinese_font(&cc.egui_ctx);
+            apply_dark_theme(&cc.egui_ctx);
             if minimized {
                 cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
             }
