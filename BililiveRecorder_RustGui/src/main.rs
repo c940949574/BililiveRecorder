@@ -306,6 +306,22 @@ impl App {
                 self.poll_error = Some(e);
             }
         }
+        // 首次连通后探测核心的工作目录；探测不到说明连的是旧版核心，明确警告而不是默默找错文件
+        if self.api_workdir.is_none() && !self.rooms.is_empty() {
+            match self.client.get_workdir() {
+                Ok(wd) if !wd.trim().is_empty() => {
+                    self.api_workdir = Some(wd);
+                    self.gui_log(&format!("录制核心工作目录：{}", self.api_workdir.as_deref().unwrap_or("")));
+                }
+                _ => {
+                    let warn = "连接的录制核心是旧版本（没有工作目录接口）——「播放」可能找不到正在录的文件。请关闭它并重启本程序以使用自带核心。";
+                    if self.poll_error.as_deref() != Some(warn) {
+                        self.gui_log(warn);
+                    }
+                    self.poll_error = Some(warn.to_string());
+                }
+            }
+        }
         if self.show_logs {
             if let Ok(logs) = self.client.fetch_logs() { self.logs = logs; }
         }
