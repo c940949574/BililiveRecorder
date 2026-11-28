@@ -168,6 +168,8 @@ struct App {
     add_room_input: String,
     show_settings: bool,
     show_logs: bool,
+    /// 从核心 API 拿到的真实录播文件目录（连上外部核心时与本地推断可能不同）
+    api_workdir: Option<String>,
     logs: Vec<api::LogEntry>,
     elapsed: f64,
 }
@@ -189,7 +191,7 @@ impl App {
             rooms: Vec::new(), series: HashMap::new(), poll_error: None,
             last_poll: Instant::now() - Duration::from_secs(10),
             status: String::new(), add_room_input: String::new(),
-            show_settings: false, show_logs: false, logs: Vec::new(),
+            show_settings: false, show_logs: false, logs: Vec::new(), api_workdir: None,
             elapsed: 0.0,
         }
     }
@@ -337,7 +339,11 @@ impl App {
 
     /// 在保存目录里找该房间正在写入的 FLV（30 秒内有改动）；没有则取最新的一个
     fn find_recording_file(&self, room: &Room) -> Option<PathBuf> {
-        let root = self.work_dir();
+        let root = self.api_workdir.as_deref()
+            .map(|s| s.trim_matches('"').trim().to_string())
+            .filter(|s| !s.is_empty())
+            .and_then(|s| { let p = PathBuf::from(&s); if p.is_dir() { Some(p) } else { None } })
+            .unwrap_or_else(|| self.work_dir());
         let prefixes = [format!("{}-", room.room_id), format!("{}-", room.short_id)];
         let exact = [room.room_id.to_string(), room.short_id.to_string()];
         let now = std::time::SystemTime::now();
@@ -364,6 +370,10 @@ impl App {
     }
 
     fn play_current(&mut self, room: &Room) {
+        // 每次点播放前刷新一次真实工作目录（本地缓存失效也无妨，localhost 调用很快）
+        if let Ok(wd) = self.client.get_workdir() {
+            if !wd.trim().is_empty() { self.api_workdir = Some(wd); }
+        }
         match self.find_recording_file(room) {
             Some(path) => {
                 let shown = path.display().to_string();
@@ -374,7 +384,10 @@ impl App {
                     Err(e) => self.status = e,
                 }
             }
-            None => self.status = format!("保存目录里没有房间 {} 的录制文件：{}", room.room_id, self.work_dir().display()),
+            None => {
+                let root = self.api_workdir.clone().unwrap_or_else(|| self.work_dir().display().to_string());
+                self.status = format!("保存目录里没有房间 {} 的录制文件：{}", room.room_id, root);
+            }
         }
     }
 
@@ -494,7 +507,12 @@ impl eframe::App for App {
                             ui.allocate_ui_with_layout(
                                 egui::vec2(col_w, 0.0),
                                 egui::Layout::top_down(egui::Align::Min),
-                                |ui| self.render_room_card(ui, room),
+                                |ui| {
+                                    // 内容最小宽度不许超过格子宽度，否则整列被撑爆、卡片溢出屏幕
+                                    ui.set_min_width(col_w);
+                                    ui.set_max_width(col_w);
+                                    self.render_room_card(ui, room);
+                                },
                             );
                             if (i + 1) % cols == 0 {
                                 ui.end_row();

@@ -173,6 +173,13 @@ impl ApiClient {
         resp.json::<Vec<Room>>().map_err(|e| e.to_string())
     }
 
+    /// 录制核心的录播文件工作目录（核心实际使用的，可能与 GUI 本地推断不同）
+    pub fn get_workdir(&self) -> Result<String, String> {
+        let resp = self.req(reqwest::Method::GET, "/api/misc/workDirectory").send().map_err(|e| e.to_string())?;
+        if !resp.status().is_success() { return Err(format!("HTTP {}", resp.status())); }
+        resp.text().map(|s| s.trim_matches('"').trim().to_string()).map_err(|e| e.to_string())
+    }
+
     pub fn add_room(&self, room_id: i64, auto_record: bool) -> Result<(), String> {
         #[derive(Serialize)]
         struct Body { room_id: i64, auto_record: bool }

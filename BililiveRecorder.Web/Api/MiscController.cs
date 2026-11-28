@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.NetworkInformation;
 using AutoMapper;
+using BililiveRecorder.Core;
 using BililiveRecorder.Core.Config.V3;
 using BililiveRecorder.Core.Templating;
 using BililiveRecorder.Web.Models.Rest;
@@ -14,10 +15,21 @@ namespace BililiveRecorder.Web.Api
     public sealed class MiscController : ControllerBase
     {
         private readonly IMapper mapper;
+        private readonly IRecorder recorder;
 
-        public MiscController(IMapper mapper)
+        public MiscController(IMapper mapper, IRecorder recorder)
         {
             this.mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
+            this.recorder = recorder ?? throw new ArgumentNullException(nameof(recorder));
+        }
+
+        /// <summary>
+        /// 获取录制核心的录播文件工作目录
+        /// </summary>
+        [HttpGet("workDirectory")]
+        public ActionResult<string> GetWorkDirectory()
+        {
+            return this.recorder.Config.Global.WorkDirectory ?? string.Empty;
         }
 
         /// <summary>
