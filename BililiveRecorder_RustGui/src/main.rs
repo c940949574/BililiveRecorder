@@ -130,6 +130,8 @@ struct Config {
     auto_launch: bool,
     /// 播放器程序路径（ffplay/mpv/PotPlayer 等）；空 = 系统默认关联程序
     player_path: String,
+    /// 播放器窗口 [左, 上, 宽, 高]；播放器退出时自动记住，下次按此打开
+    player_geometry: Option<[i32; 4]>,
     /// 录制文件保存目录；空 = 程序同目录下的「录播文件」
     work_dir: String,
 }
@@ -146,6 +148,7 @@ impl Default for Config {
             ma_long: 10,
             auto_launch: true,
             player_path: String::new(),
+            player_geometry: None,
             work_dir: String::new(),
         }
     }
@@ -395,8 +398,13 @@ impl App {
                 let shown = path.display().to_string();
                 let title = format!("{} · 正在录制", room.display_name());
                 let choice = self.resolve_player();
-                match launcher::launch_player(&choice, &path, &title) {
-                    Ok(()) => self.status = format!("正在播放：{shown}"),
+                match launcher::launch_player(&choice, &path, &title, self.cfg.player_geometry) {
+                    Ok(Some(pid)) => {
+                        // 后台盯窗口：播放器退出时记住最后一次的大小/位置
+                        launcher::watch_player_geometry(pid, self.settings_file());
+                        self.status = format!("正在播放：{shown}");
+                    }
+                    Ok(None) => self.status = format!("正在播放：{shown}"),
                     Err(e) => self.status = e,
                 }
             }

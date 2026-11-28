@@ -338,15 +338,27 @@ fn probe_last_pts(ffplay: &Path, file: &Path) -> Option<f64> {
 }
 
 /// 启动外部播放器播放文件。非阻塞：不等播放器退出。
-pub fn launch_player(choice: &PlayerChoice, file: &Path, title: &str) -> Result<(), String> {
+/// geometry = Some([左,上,宽,高]) 时按此打开窗口（ffplay）。
+/// 成功返回播放器进程号（System 方式返回 None），供窗口位置记忆用。
+pub fn launch_player(choice: &PlayerChoice, file: &Path, title: &str,
+                     geometry: Option<[i32; 4]>) -> Result<Option<u32>, String> {
     let (exe, args): (&Path, Vec<String>) = match choice {
-        PlayerChoice::System => return open_with_default(file),
+        PlayerChoice::System => {
+            open_with_default(file)?;
+            return Ok(None);
+        }
         PlayerChoice::Ffplay(exe) => {
             let mut a = vec![
                 "-autoexit".into(),
                 "-loglevel".into(), "error".into(),
                 "-window_title".into(), title.into(),
             ];
+            if let Some([left, top, w, h]) = geometry {
+                a.push("-left".into()); a.push(left.to_string());
+                a.push("-top".into()); a.push(top.to_string());
+                a.push("-x".into()); a.push(w.to_string());
+                a.push("-y".into()); a.push(h.to_string());
+            }
             // 增长中的文件从头播会落后直播：快进到最后时间戳前 ~1.5 秒，直接对上实时
             if let Some(pts) = probe_last_pts(exe, file) {
                 let ss = (pts - 1.5).max(0.0);
@@ -365,8 +377,78 @@ pub fn launch_player(choice: &PlayerChoice, file: &Path, title: &str) -> Result<
         .stderr(Stdio::null());
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
-    cmd.spawn().map(|_| ()).map_err(|e| format!("启动播放器 {} 失败：{e}", exe.display()))
+    let child = cmd.spawn().map_err(|e| format!("启动播放器 {} 失败：{e}", exe.display()))?;
+    Ok(Some(child.id()))
 }
+
+/// 盯着播放器的窗口，退出时把最后一次的 [左,上,宽,高] 存回设置文件，下次按此打开。
+#[cfg(windows)]
+pub fn watch_player_geometry(pid: u32, settings_path: PathBuf) {
+    use std::sync::mpsc;
+    let (tx, rx) = mpsc::channel::<[i32; 4]>();
+    // 采样线程：500ms 一次，窗口消失后把最后一次矩形交给保存线程
+    std::thread::spawn(move || unsafe {
+        let mut last: Option<[i32; 4]> = None;
+        let mut seen = false;
+        // 上限 8 小时，防播放器永不退出时线程常驻
+        for _ in 0..(8 * 3600 * 2) {
+            let rect = find_player_window(pid);
+            match rect {
+                Some(r) => { seen = true; last = Some(r); }
+                None if seen => { break; }
+                None => {}
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        let _ = tx.send(last);
+    });
+    // 保存线程：读设置 JSON → 更新 playerGeometry → 写回
+    std::thread::spawn(move || {
+        if let Ok(rect) = rx.recv() {
+            if let Some(rect) = rect {
+                if let Some(mut v) = read_settings_value(&settings_path) {
+                    v["playerGeometry"] = serde_json::json!(rect);
+                    let _ = std::fs::write(&settings_path,
+                        serde_json::to_string_pretty(&v).unwrap_or_default());
+                }
+            }
+        }
+    });
+}
+
+#[cfg(windows)]
+#[allow(non_snake_case)]
+fn find_player_window(pid: u32) -> Option<[i32; 4]> {
+    use winapi::shared::minwindef::LPARAM;
+    use winapi::um::winuser::{EnumWindows, GetWindowRect, GetWindowThreadProcessId, IsWindowVisible};
+
+    struct Ctx { pid: u32, rect: Option<[i32; 4]> }
+    unsafe extern "system" fn cb(hwnd: winapi::shared::windef::HWND, lparam: LPARAM) -> i32 {
+        let ctx = &mut *(lparam.0 as *mut Ctx);
+        let mut wpid = 0u32;
+        GetWindowThreadProcessId(hwnd, &mut wpid);
+        if wpid == ctx.pid && IsWindowVisible(hwnd) != 0 {
+            let mut r = winapi::shared::windef::RECT::default();
+            if GetWindowRect(hwnd, &mut r) != 0 && r.right - r.left > 80 && r.bottom - r.top > 60 {
+                ctx.rect = Some([r.left, r.top, r.right - r.left, r.bottom - r.top]);
+            }
+        }
+        1
+    }
+    let mut ctx = Ctx { pid, rect: None };
+    unsafe { EnumWindows(Some(cb), LPARAM(&mut ctx as *mut Ctx as isize)); }
+    ctx.rect
+}
+
+#[cfg(not(windows))]
+pub fn watch_player_geometry(_pid: u32, _settings_path: PathBuf) {}
+
+#[cfg(windows)]
+fn read_settings_value(p: &Path) -> Option<serde_json::Value> {
+    serde_json::from_str(&std::fs::read_to_string(p).ok()?).ok()
+}
+#[cfg(not(windows))]
+fn read_settings_value(_p: &Path) -> Option<serde_json::Value> { None }
 
 /// 用系统默认程序打开文件或文件夹
 pub fn open_with_default(path: &Path) -> Result<(), String> {

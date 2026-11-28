@@ -20,3 +20,4 @@ strip = true
 
 [target."cfg(windows)".dependencies]
 winreg = "0.52"
+winapi = { version = "0.3", features = ["winuser", "impl-default"] }
