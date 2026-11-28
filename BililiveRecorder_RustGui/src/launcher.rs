@@ -385,7 +385,7 @@ pub fn launch_player(choice: &PlayerChoice, file: &Path, title: &str,
 #[cfg(windows)]
 pub fn watch_player_geometry(pid: u32, settings_path: PathBuf) {
     use std::sync::mpsc;
-    let (tx, rx) = mpsc::channel::<[i32; 4]>();
+    let (tx, rx) = mpsc::channel::<Option<[i32; 4]>>();
     // 采样线程：500ms 一次，窗口消失后把最后一次矩形交给保存线程
     std::thread::spawn(move || unsafe {
         let mut last: Option<[i32; 4]> = None;
@@ -404,13 +404,11 @@ pub fn watch_player_geometry(pid: u32, settings_path: PathBuf) {
     });
     // 保存线程：读设置 JSON → 更新 playerGeometry → 写回
     std::thread::spawn(move || {
-        if let Ok(rect) = rx.recv() {
-            if let Some(rect) = rect {
-                if let Some(mut v) = read_settings_value(&settings_path) {
-                    v["playerGeometry"] = serde_json::json!(rect);
-                    let _ = std::fs::write(&settings_path,
-                        serde_json::to_string_pretty(&v).unwrap_or_default());
-                }
+        if let Ok(Some(rect)) = rx.recv() {
+            if let Some(mut v) = read_settings_value(&settings_path) {
+                v["playerGeometry"] = serde_json::json!(rect);
+                let _ = std::fs::write(&settings_path,
+                    serde_json::to_string_pretty(&v).unwrap_or_default());
             }
         }
     });
@@ -420,15 +418,16 @@ pub fn watch_player_geometry(pid: u32, settings_path: PathBuf) {
 #[allow(non_snake_case)]
 fn find_player_window(pid: u32) -> Option<[i32; 4]> {
     use winapi::shared::minwindef::LPARAM;
+    use winapi::shared::windef::{HWND, RECT};
     use winapi::um::winuser::{EnumWindows, GetWindowRect, GetWindowThreadProcessId, IsWindowVisible};
 
     struct Ctx { pid: u32, rect: Option<[i32; 4]> }
-    unsafe extern "system" fn cb(hwnd: winapi::shared::windef::HWND, lparam: LPARAM) -> i32 {
-        let ctx = &mut *(lparam.0 as *mut Ctx);
+    unsafe extern "system" fn cb(hwnd: HWND, lparam: LPARAM) -> i32 {
+        let ctx = &mut *(lparam as *mut Ctx);
         let mut wpid = 0u32;
         GetWindowThreadProcessId(hwnd, &mut wpid);
         if wpid == ctx.pid && IsWindowVisible(hwnd) != 0 {
-            let mut r = winapi::shared::windef::RECT::default();
+            let mut r = RECT::default();
             if GetWindowRect(hwnd, &mut r) != 0 && r.right - r.left > 80 && r.bottom - r.top > 60 {
                 ctx.rect = Some([r.left, r.top, r.right - r.left, r.bottom - r.top]);
             }
@@ -436,7 +435,7 @@ fn find_player_window(pid: u32) -> Option<[i32; 4]> {
         1
     }
     let mut ctx = Ctx { pid, rect: None };
-    unsafe { EnumWindows(Some(cb), LPARAM(&mut ctx as *mut Ctx as isize)); }
+    unsafe { EnumWindows(Some(cb), (&mut ctx as *mut Ctx) as LPARAM); }
     ctx.rect
 }
 
