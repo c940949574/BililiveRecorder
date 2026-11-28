@@ -25,7 +25,7 @@ const COLOR_TEXT: egui::Color32 = egui::Color32::from_rgb(0xF2, 0xF3, 0xF5);
 const BG_APP: egui::Color32 = egui::Color32::from_rgb(0x17, 0x18, 0x1C);
 const BG_CARD: egui::Color32 = egui::Color32::from_rgb(0x1E, 0x20, 0x25);
 const BG_HOVER: egui::Color32 = egui::Color32::from_rgb(0x2A, 0x2D, 0x33);
-const COLOR_LINE: egui::Color32 = egui::Color32::from_rgba_unmultiplied(255, 255, 255, 26);
+const COLOR_LINE: egui::Color32 = egui::Color32::from_rgba_premultiplied(26, 26, 26, 26);
 const DEFAULT_PORT: u16 = 2356;
 
 /// 持久化到 data/gui-settings.json 的设置
@@ -452,10 +452,10 @@ impl App {
                 self.status_pill(ui, room);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.menu_button("⋮", |ui| {
-                        if ui.button("刷新房间信息").clicked() { self.act(&key, "refresh"); ui.close(); }
-                        if ui.button("切片").clicked() { self.act(&key, "split"); ui.close(); }
+                        if ui.button("刷新房间信息").clicked() { self.act(&key, "refresh"); ui.close_menu(); }
+                        if ui.button("切片").clicked() { self.act(&key, "split"); ui.close_menu(); }
                         ui.separator();
-                        if ui.button(egui::RichText::new("删除房间").color(COLOR_BAD)).clicked() { self.act(&key, "delete"); ui.close(); }
+                        if ui.button(egui::RichText::new("删除房间").color(COLOR_BAD)).clicked() { self.act(&key, "delete"); ui.close_menu(); }
                     });
                     if ui.add_enabled(room.recording, egui::Button::new("⏵ 播放")).clicked() {
                         let r = room.clone();
@@ -499,7 +499,7 @@ impl App {
                     if !area.is_empty() {
                         plot_ui.polygon(
                             Polygon::new("面积", area)
-                                .fill(egui::Color32::from_rgba_unmultiplied(226, 75, 74, 36))
+                                .fill_color(egui::Color32::from_rgba_unmultiplied(226, 75, 74, 36))
                                 .stroke(egui::Stroke::NONE),
                         );
                     }
